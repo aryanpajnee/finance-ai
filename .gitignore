@@ -24,3 +24,6 @@ logs/
 .idea/
 .vscode/
 *.swp
+
+# Agent / tooling caches
+.playwright-mcp/

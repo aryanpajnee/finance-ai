@@ -1,0 +1,298 @@
+/* ============================================================================
+   AI Financial Risk Analyst — "Tearsheet" UI
+   Light paper · Newsreader (serif voice) · IBM Plex Sans (body) · Plex Mono (data)
+   Boldness spent in ONE place: the Risk Axis. Everything else stays quiet.
+   Loaded by app.py's load_css(), injected inside a style element.
+   ============================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+:root {
+  --ink:      #1A2230;
+  --muted:    #717684;
+  --paper:    #F4F5F2;
+  --surface:  #FFFFFF;
+  --hairline: #DDDDD6;
+  --accent:   #27408B;
+  --low:      #2E7D6B;   /* evergreen  */
+  --mod:      #C0892F;   /* ochre      */
+  --high:     #A8382F;   /* oxblood    */
+}
+
+/* ----- Base ---------------------------------------------------------------- */
+.stApp {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+/* One-page measure, centered like a printed tearsheet. */
+.block-container,
+[data-testid="stMainBlockContainer"] {
+  max-width: 780px;
+  padding-top: 2.4rem;
+  padding-bottom: 4rem;
+}
+[data-testid="stHeader"] { background: transparent; }
+#MainMenu, footer { visibility: hidden; }
+
+/* Mono utility — apply to any element that should read as machine data. */
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+/* ----- Eyebrow ------------------------------------------------------------- */
+.ts-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 1.4rem;
+}
+
+/* ----- Command-line input (Streamlit text_input) --------------------------- */
+.stTextInput label { color: var(--muted); font-size: 13px; }
+.stTextInput input {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+}
+.stTextInput input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(39,64,139,0.12);
+}
+
+/* Optional "Analyze" button, if you add one. */
+.stButton > button {
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.1rem;
+}
+.stButton > button:hover { background: #1d3070; color: #fff; }
+
+/* ----- Masthead ------------------------------------------------------------ */
+.ts-rule { border: none; border-top: 1px solid var(--hairline); margin: 1.6rem 0; }
+.ts-company {
+  font-family: 'Newsreader', Georgia, serif;
+  font-weight: 500;
+  font-size: 34px;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  margin: 0 0 0.35rem 0;
+}
+.ts-meta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* ----- Section label ------------------------------------------------------- */
+.ts-section {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: 0.5rem;
+  margin: 2.6rem 0 1.1rem 0;
+}
+
+/* ======================================================================
+   SIGNATURE — Risk Axis
+   Band color is driven by one variable, set via .is-low / .is-mod / .is-high.
+   ====================================================================== */
+.risk-axis {
+  --risk: var(--mod);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 1.5rem 1.6rem 1.3rem;
+  margin: 1.4rem 0 0.4rem;
+}
+.risk-axis.is-low  { --risk: var(--low);  }
+.risk-axis.is-mod  { --risk: var(--mod);  }
+.risk-axis.is-high { --risk: var(--high); }
+
+.risk-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2.4rem; }
+.risk-eyebrow {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted);
+}
+.risk-band {
+  font-family: 'Newsreader', Georgia, serif;
+  font-weight: 500; font-size: 19px; color: var(--risk);
+}
+
+/* The 0–100 track */
+.risk-track { position: relative; height: 6px; border-radius: 3px; }
+.risk-zones {
+  position: absolute; inset: 0; border-radius: 3px;
+  /* low | moderate | high, very faint inks, hard stops at 35% and 65% */
+  background: linear-gradient(90deg,
+    rgba(46,125,107,0.18) 0 35%,
+    rgba(192,137,47,0.20) 35% 65%,
+    rgba(168,56,47,0.20)  65% 100%);
+}
+/* connector from snapshot → adjusted; you set left/width inline in Python */
+.risk-connector {
+  position: absolute; top: 50%; height: 2px;
+  background: var(--risk); opacity: 0.55; transform: translateY(-50%);
+}
+/* hollow "ghost" = pre-trend snapshot; you set left inline */
+.risk-ghost {
+  position: absolute; top: 50%; width: 11px; height: 11px;
+  border: 2px solid var(--muted); border-radius: 50%;
+  background: var(--surface); transform: translate(-50%, -50%);
+}
+/* filled marker = trend-adjusted score; you set left inline */
+.risk-marker {
+  position: absolute; top: 50%; width: 15px; height: 15px;
+  background: var(--risk); border: 2px solid var(--surface); border-radius: 50%;
+  transform: translate(-50%, -50%); box-shadow: 0 0 0 1px var(--risk);
+}
+.risk-value {
+  position: absolute; top: -2.05rem; left: 50%; transform: translateX(-50%);
+  font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+  font-weight: 500; font-size: 20px; color: var(--risk); white-space: nowrap;
+}
+
+.risk-scale {
+  display: flex; justify-content: space-between;
+  font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+  font-size: 10.5px; color: var(--muted); margin-top: 0.7rem;
+}
+.risk-legend {
+  font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+  font-size: 12px; color: var(--muted); margin-top: 0.9rem;
+}
+.risk-legend b { color: var(--ink); font-weight: 500; }
+
+/* ----- Evidence table ------------------------------------------------------ */
+.ts-table { width: 100%; border-collapse: collapse; }
+.ts-table th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--muted); text-align: left; font-weight: 500;
+  padding: 0 0.6rem 0.55rem; border-bottom: 1px solid var(--hairline);
+}
+.ts-table td {
+  font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+  font-size: 13.5px; color: var(--ink);
+  padding: 0.6rem; border-bottom: 1px solid var(--hairline);
+}
+.ts-table td.metric { font-family: 'IBM Plex Sans', sans-serif; color: var(--ink); }
+.ts-table th.num, .ts-table td.num { text-align: right; }
+.ts-table td.up   { color: var(--high); }   /* trend raised risk */
+.ts-table td.down { color: var(--low);  }   /* trend lowered risk */
+.ts-table .flat   { color: var(--muted); }
+.ts-hint { font-size: 11.5px; color: var(--muted); margin-top: 0.5rem; }
+
+/* ----- Analyst note (the plain-English summary) ---------------------------- */
+.ts-note {
+  font-family: 'Newsreader', Georgia, serif;
+  font-size: 17px; line-height: 1.7; color: var(--ink);
+}
+.ts-note p { margin: 0 0 0.9rem 0; }
+.ts-note strong { font-weight: 600; }
+
+/* ----- Low-confidence callout (banks / NBFCs / insurers) ------------------- */
+.ts-warn {
+  background: rgba(192,137,47,0.08);
+  border-left: 3px solid var(--mod);
+  padding: 0.9rem 1.1rem; border-radius: 4px;
+  font-size: 13.5px; color: #6b4f1d; margin: 1.2rem 0;
+}
+
+/* ----- Download button ----------------------------------------------------- */
+.stDownloadButton > button {
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--ink); border-radius: 6px; padding: 0.6rem 1.2rem;
+}
+.stDownloadButton > button:hover { background: var(--ink); color: var(--paper); }
+
+/* ----- Document chat ------------------------------------------------------- */
+/* Chat MESSAGES are custom-HTML bubbles (st.markdown), not native chat widgets.
+   Differentiated three ways: alignment, fill color, and a mono role label. */
+.ts-chat {
+  display: block;
+  max-width: 86%;
+  margin: 0.55rem 0;
+  padding: 0.7rem 1rem 0.8rem;
+  border-radius: 12px;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 14.5px;
+  line-height: 1.62;
+  overflow-wrap: anywhere;
+}
+.ts-chat::before {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9.5px; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 0.3rem;
+}
+.ts-chat p { margin: 0; }
+.ts-chat p + p { margin-top: 0.6rem; }
+.ts-chat strong { font-weight: 600; }
+
+/* Analyst AI — left, white card (the "analyst voice" side) */
+.ts-chat-ai {
+  margin-right: auto;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-top-left-radius: 4px;
+}
+.ts-chat-ai::before { content: "Analyst AI"; }
+
+/* You — right, accent-tinted */
+.ts-chat-user {
+  margin-left: auto;
+  background: rgba(39,64,139,0.07);
+  border: 1px solid rgba(39,64,139,0.18);
+  border-top-right-radius: 4px;
+}
+.ts-chat-user::before { content: "You"; text-align: right; }
+
+/* Chat input — match the command bar's look and widen it to the page measure.
+   NOTE: these Streamlit-internal selectors are brittle and may shift on upgrade;
+   the .ts-chat bubble markup above is immune. */
+[data-testid="stBottomBlockContainer"] { max-width: 780px; }
+[data-testid="stChatInput"] {
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+}
+[data-testid="stChatInput"]:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(39,64,139,0.12);
+}
+[data-testid="stChatInput"] textarea {
+  font-family: 'IBM Plex Mono', monospace !important;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+/* ----- Quality floor ------------------------------------------------------- */
+@media (max-width: 640px) {
+  .ts-company { font-size: 27px; }
+  .risk-value { font-size: 17px; }
+  .block-container { padding-top: 1.4rem; }
+}
+*:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

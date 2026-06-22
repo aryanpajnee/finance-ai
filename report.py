@@ -36,19 +36,33 @@ def build_report_html(metadata, result, summary):
     rows = ""
     for name in result["ratios"]:
         raw = result["ratios"][name]
-        sub = result["scores"][name]
+        sub = result["scores"][name]                      # unadjusted level score
+        delta = result["trend_deltas"][name]
+        adj = result["scores_adjusted"][name]
         label = name.replace("_", " ").title()
         value = "N/A" if raw is None else _format_raw(name, raw)
-        sub_display = "N/A" if sub is None else round(sub, 1)
+        if sub is None:
+            sub_display, trend_display, adj_display = "N/A", "—", "N/A"
+        else:
+            sub_display = round(sub, 1)
+            trend_display = "—" if delta == 0 else (f"▲ +{delta}" if delta > 0 else f"▼ {delta}")
+            adj_display = round(adj, 1)
         rows += (
             f"<tr><td>{label}</td>"
             f"<td class='num'>{value}</td>"
-            f"<td class='num'>{sub_display}</td></tr>"
-        )
+            f"<td class='num'>{sub_display}</td>"
+            f"<td class='num'>{trend_display}</td>"
+            f"<td class='num'>{adj_display}</td></tr>"
+    )
 
-    score = result["final"]
+    score = result["final_adjusted"]
     score_text = "N/A" if score is None else f"{score:.1f} / 100"
     band_label, band_color = _score_band(score)
+    
+    snapshot = result["final"]
+    snapshot_html = ""
+    if score is not None and snapshot is not None and abs(score - snapshot) >= 0.05:
+        snapshot_html = f'<div class="snapshot">Point-in-time before trend: {snapshot:.1f} / 100</div>'
 
     name = metadata["name"] or "N/A"
     sector = metadata["sector"] or "N/A"
@@ -128,6 +142,11 @@ def build_report_html(metadata, result, summary):
         padding-bottom: 4px;
         margin: 24px 0 10px 0;
     }}
+    .score-box .snapshot {{
+        font-size: 11px;
+        opacity: 0.85;
+        margin-top: 5px;
+    }}  
     table {{ border-collapse: collapse; width: 100%; }}
     th, td {{ padding: 7px 10px; }}
     th {{
@@ -167,12 +186,14 @@ def build_report_html(metadata, result, summary):
     <div class="score-box">
         <div class="label">Overall Risk Score &mdash; {band_label}</div>
         <div class="value">{score_text}</div>
-        <div class="scale">0 = least risky&nbsp;&nbsp;·&nbsp;&nbsp;100 = most risky</div>
+        {snapshot_html}
+    <div class="scale">0 = least risky&nbsp;&nbsp;·&nbsp;&nbsp;100 = most risky</div>
+</div>
     </div>
 
     <h2>Metric Breakdown</h2>
     <table>
-        <tr><th>Metric</th><th class="num">Value</th><th class="num">Risk Score</th></tr>
+        <tr><th>Metric</th><th class="num">Value</th><th class="num">Risk Score</th><th class="num">Trend</th><th class="num">Adj. Risk</th></tr>
         {rows}
     </table>
 

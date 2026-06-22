@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 
 def current_ratio(latest):
@@ -9,6 +10,44 @@ def current_ratio(latest):
         return None
     else:
         return numerator/denominator
+
+def ratio_series(df):
+    rows = []
+    for i in range(len(df)):
+        prior = df.iloc[i + 1] if i + 1 < len(df) else None
+        rows.append((df.index[i], compute_ratios_for(df.iloc[i], prior)))
+    rows.reverse()                            # oldest -> newest
+    periods = [p for p, _ in rows]
+    series = {name: [r[name] for _, r in rows] for name in THRESHOLDS}
+    return periods, series
+
+def _higher_is_better(name):
+    safe, risky = THRESHOLDS[name]
+    return safe > risky                       # D/E -> False, the rest -> True
+
+def trend_delta(name, series, latest_level):   # series oldest->newest
+    pts = [v for v in series if v is not None and not math.isinf(v)]
+    if len(pts) < MIN_TREND_POINTS:
+        return 0                              # not enough history -> no score change
+    if latest_level is not None and latest_level < TREND_GATE:
+        return 0                              # deep in safe zone -> trend irrelevant, huge buffer
+    base = abs(pts[0]) if abs(pts[0]) > 1e-9 else 1.0
+    rel = (pts[-1] - pts[0]) / base
+    if abs(rel) < DEADBAND:
+        return 0                              # move too small -> noise, not a trend
+    improving = (rel > 0) == _higher_is_better(name)
+    return -TREND_DELTA if improving else TREND_DELTA
+
+def adjust_scores(level_scores, series):
+    deltas, adjusted = {}, {}
+    for name, level in level_scores.items():
+        if level is None:
+            deltas[name], adjusted[name] = 0, None
+            continue
+        d = trend_delta(name, series[name], level)
+        deltas[name] = d
+        adjusted[name] = max(0, min(100, level + d))
+    return deltas, adjusted
 
 def debt_to_equity(latest):
     numerator = latest["Total Debt"]
@@ -41,19 +80,16 @@ def operating_margin(latest):
     else:
         return numerator/denominator
 
-def revenue_growth(latest,prior):
+def revenue_growth(latest, prior):
     term_1 = latest["Total Revenue"]
     term_2 = prior["Total Revenue"]
-    if pd.isna(term_1):
+    if pd.isna(term_1) or pd.isna(term_2):
         return None
-    if pd.isna(term_2) or abs(term_2)<1:
+    if term_2 <= 1:            
         return None
-    else:
-        return (term_1-term_2)/term_2
+    return (term_1 - term_2) / term_2
 
-def compute_ratios(df):
-    latest = df.iloc[0]
-    prior = df.iloc[1] if len(df) > 1 else None
+def compute_ratios_for(latest, prior):
     return {
         "current_ratio":     current_ratio(latest),
         "debt_to_equity":    debt_to_equity(latest),
@@ -61,6 +97,9 @@ def compute_ratios(df):
         "operating_margin":  operating_margin(latest),
         "revenue_growth":    revenue_growth(latest, prior) if prior is not None else None,
     }
+def compute_ratios(df):                      # unchanged behavior: snapshot = latest year
+    prior = df.iloc[1] if len(df) > 1 else None
+    return compute_ratios_for(df.iloc[0], prior)
     
 THRESHOLDS = { #(safe,risky)
     "current_ratio": (2.0,1.0),
@@ -69,6 +108,11 @@ THRESHOLDS = { #(safe,risky)
     "operating_margin": (0.20, 0.0),
     "revenue_growth": (0.15 , 0.0)
 }
+DEADBAND = 0.175      
+TREND_DELTA = 8        
+MIN_TREND_POINTS = 3   
+TREND_GATE = 40
+
 def normalise(safe, risky, value):
     if value is None:
         return None
@@ -104,12 +148,18 @@ def final_score(scores):
 def assess_risk(df):
     ratios = compute_ratios(df)
     scores = score_ratios(ratios)
-    final = final_score(scores)
+    final  = final_score(scores)
+
+    periods, series = ratio_series(df)
+    trend_deltas, scores_adjusted = adjust_scores(scores, series)
+    final_adjusted = final_score(scores_adjusted)
 
     return {
-        "ratios": ratios,
-        "scores": scores,
-        "final" : final
+        "ratios": ratios, "scores": scores, "final": final,
+        "periods": periods, "series": series,
+        "trend_deltas": trend_deltas,
+        "scores_adjusted": scores_adjusted,
+        "final_adjusted": final_adjusted,
     }
 
 if __name__ == "__main__":
