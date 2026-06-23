@@ -22,7 +22,7 @@ def extract_pdfs(files):
     return docs , failures
 
 CHARS_PER_TOKEN= 4
-TOKEN_CAP = 600_000
+TOKEN_CAP = 200_000
 _PROMPT_OVERHEAD_CHARS=3000
 
 def estimate_tokens(docs , history , question=""):
@@ -59,9 +59,9 @@ Adding insight (this is what makes you useful, not just a lookup):
 
 
 def _build_prompt(docs, history , question):
-    parts = [SYSTEM_PROMPT , "" , "===DOCUMENTS==="]
+    parts = [SYSTEM_PROMPT , "" , "=== DOCUMENTS ==="]
     for name,text in docs:
-        parts.append(f"\n---DOCUMENT: {name} ---n{text}")
+        parts.append(f"\n---DOCUMENT: {name} ---\n{text}")
     parts.append("\n=== CONVERSATION SO FAR ===")
     for m in history:
         speaker = "Analyst" if m["role"] == "user" else "Assistant"
@@ -77,12 +77,18 @@ def answer_question(docs , history , question):
     
     
 if __name__ == "__main__":
-    with open("report_TCS.pdf", "rb") as f:
+    import sys
+    if len(sys.argv) < 2:
+        print("usage: python docchat.py <pdf_path> [question]")
+        sys.exit(1)
+    path = sys.argv[1]
+    with open(path, "rb") as f:
         data = f.read()
-    docs, failures = extract_pdfs([("report_TCS.pdf", data)])
+    name = path.split("/")[-1]
+    docs, failures = extract_pdfs([(name, data)])
     print("docs:", [(n, len(t)) for n, t in docs])
     print("failures:", failures)
     ok, est = within_budget(docs, [])
     print("within_budget:", ok, "est tokens:", est)
-    ans = answer_question(docs, [], "What is the revenue growth rate and operating margin, and from which document?")
-    print("\nANSWER:\n", ans)
+    question = sys.argv[2] if len(sys.argv) > 2 else "What does this document say about revenue and margins?"
+    print("\nANSWER:\n", answer_question(docs, [], question))

@@ -82,8 +82,9 @@ Rules:
 - Be honest and balanced — do not soften a high-risk score or inflate a low one.
 - If overall confidence is low (several metrics missing), say the assessment is limited.
 - Keep it under 200 words. End with one plain-language sentence summarising the overall risk.
-- The overall score is TREND-ADJUSTED: a metric worsening across the years adds risk, improving subtracts (within a small bound). When a trajectory is shown, state the direction and whether it pushed risk up or down — do not re-derive or dispute the score.
-- A single year's value can look fine while the trajectory tells a different story (e.g. a current ratio of 2.23 that fell from 4.10 → 3.05 → 2.23). Call that out when it happens.
+- The overall score is TREND-ADJUSTED. Each metric's trend effect is stated explicitly: "trend +N risk" means its multi-year direction RAISED the score; "trend -N risk" means it LOWERED the score; "trend flat/short" means the trend did NOT change the score (the move was too small, or the metric is already at a safe extreme). Do not re-derive or dispute these.
+- Only say a trajectory pushed risk up or down when that metric is marked "trend +N risk" or "trend -N risk". For a metric marked "trend flat/short", you may describe how its value moved over the years, but you MUST NOT claim that movement raised or lowered risk — its trend did not affect the score.
+- A single year's value can look fine while a non-zero trend tells a different story (e.g. a current ratio of 2.23 that fell 4.10 → 3.05 → 2.23, marked "trend + risk"). Call that out only when the trend marker shows an actual + or - effect.
 
 Do not give investment advice or tell the user to buy/sell/hold."""
 

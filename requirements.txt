@@ -1,0 +1,8 @@
+google-genai==2.8.0
+Markdown==3.10.2
+pandas==3.0.3
+PyMuPDF==1.27.2.3
+python-dotenv==1.2.2
+streamlit==1.58.0
+weasyprint==69.0
+yfinance==1.4.1

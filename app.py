@@ -30,9 +30,15 @@ def cached_pdf(metadata , results , summary):
 def cached_extract(files):
     return extract_pdfs(files)
 
-#st.title("AI Financial Risk Analyst")
+def normalize_ticker(raw):
+    t = raw.strip().upper()
+    if t and "." not in t:
+        t += ".NS"
+    return t
 
-ticker = st.text_input("Enter an Indian stock ticker. (e.g. TCS.NS)\n")
+#st.title("AI Financial Risk Analyst")
+raw_ticker = st.text_input("Enter an Indian stock ticker. (e.g. TCS)\n")
+ticker = normalize_ticker(raw_ticker)
 def indian_format(value):
     if pd.isna(value):
         return "—"
@@ -173,7 +179,7 @@ if ticker:
         st.download_button(
             label="↓ Download report (PDF)",
             data= pdf_bytes , 
-            file_name=f"{ticker}_risk_report.pdf",
+            file_name=f"{raw_ticker}_risk_report.pdf",
             mime="application/pdf" ,
         )
         
