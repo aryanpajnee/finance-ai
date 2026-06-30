@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Financial Risk Analyst</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="page">
+    <div class="ts-eyebrow">AI Financial Risk Analyst</div>
+
+    <!-- Command bar: a form so Enter submits, like the old text_input -->
+    <form id="ticker-form" class="ticker-form" autocomplete="off">
+      <label for="ticker-input">Enter an Indian stock ticker. (e.g. TCS)</label>
+      <div class="ticker-row">
+        <input id="ticker-input" type="text" placeholder="Type a ticker and press Enter" spellcheck="false">
+        <button type="submit" class="analyze-btn">Analyze</button>
+      </div>
+    </form>
+
+    <!-- Status line: loading spinner / errors live here -->
+    <div id="status" class="status hidden"></div>
+
+    <!-- Everything below is filled in by app.js and revealed after analysis -->
+    <section id="results" class="hidden">
+      <hr class="ts-rule">
+      <div id="company" class="ts-company"></div>
+      <div id="meta" class="ts-meta"></div>
+
+      <div class="ts-expander">
+        <button id="raw-toggle" class="ts-expander-head" type="button"
+                aria-expanded="false" aria-controls="raw-panel">
+          <span class="ts-expander-caret">▶</span> Raw financials (₹ Crore)
+        </button>
+        <div id="raw-panel" class="ts-expander-panel">
+          <div class="ts-expander-inner">
+            <div class="ts-raw-scroll"><table id="raw-table" class="ts-table"></table></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="low-conf" class="ts-warn hidden">
+        This risk model is built for non-financial companies. Several core metrics
+        aren't available here — common for banks, NBFCs, and insurers. Treat the
+        score as low-confidence.
+      </div>
+
+      <!-- Risk Axis (the signature element) -->
+      <div id="risk-axis" class="risk-axis">
+        <div class="risk-top">
+          <span class="risk-eyebrow">Risk score</span>
+          <span id="risk-band" class="risk-band"></span>
+        </div>
+        <div id="risk-track" class="risk-track">
+          <div class="risk-zones"></div>
+          <div id="risk-connector" class="risk-connector hidden"></div>
+          <div id="risk-ghost" class="risk-ghost hidden"></div>
+          <div id="risk-marker" class="risk-marker">
+            <span id="risk-value" class="risk-value"></span>
+          </div>
+        </div>
+        <div class="risk-scale"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+        <div id="risk-legend" class="risk-legend hidden"></div>
+      </div>
+
+      <div class="ts-section">Evidence</div>
+      <table class="ts-table">
+        <thead>
+          <tr>
+            <th>Metric</th><th class="num">Value</th><th class="num">Risk</th>
+            <th class="num">Trend</th><th class="num">Adj.</th>
+          </tr>
+        </thead>
+        <tbody id="evidence-body"></tbody>
+      </table>
+      <p class="ts-hint">▲ trend raised risk · ▼ trend lowered risk</p>
+
+      <div class="ts-section">Per-year ratios</div>
+      <div class="ts-raw-scroll"><table id="per-year-table" class="ts-table"></table></div>
+
+      <div class="ts-section">Analyst note</div>
+      <div id="analyst-note" class="ts-note"></div>
+
+      <a id="download-btn" class="download-btn" href="#">↓ Download report (PDF)</a>
+
+      <!-- Document Q&A -->
+      <div class="ts-section">Ask the documents</div>
+      <div class="doc-upload-label">Upload finance PDFs</div>
+      <label class="doc-uploader" for="doc-files">
+        <span class="doc-upload-btn">
+          <span class="doc-upload-ic">↑</span> Upload
+        </span>
+        <span class="doc-upload-hint">200MB per file • PDF</span>
+      </label>
+      <input id="doc-files" class="doc-files-hidden" type="file" accept="application/pdf" multiple>
+      <div id="doc-filelist" class="doc-filelist"></div>
+      <div id="doc-warn" class="ts-warn hidden"></div>
+      <div id="chat-log" class="chat-log"></div>
+      <form id="chat-form" class="chat-form hidden">
+        <input id="chat-input" type="text" placeholder="Ask about the uploaded documents" autocomplete="off">
+        <button type="submit" class="chat-send">Send</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

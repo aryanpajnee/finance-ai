@@ -1,9 +1,0 @@
-# Base theme — colors only. All typography + the custom layout live in styles.css,
-# loaded and injected from app.py. Keeping fonts out of here avoids Streamlit's
-# limited font option and lets the CSS control Newsreader / Plex Sans / Plex Mono.
-[theme]
-base = "light"
-primaryColor = "#27408B"            # deep indigo — input focus, links, buttons
-backgroundColor = "#F4F5F2"         # warm-grey "paper"
-secondaryBackgroundColor = "#FFFFFF"  # surfaces (table, callouts)
-textColor = "#1A2230"               # slate near-black ink

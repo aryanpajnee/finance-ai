@@ -1,8 +1,9 @@
 /* ============================================================================
-   AI Financial Risk Analyst — "Tearsheet" UI
+   AI Financial Risk Analyst — "Tearsheet" UI (plain HTML/CSS/JS build)
    Light paper · Newsreader (serif voice) · IBM Plex Sans (body) · Plex Mono (data)
    Boldness spent in ONE place: the Risk Axis. Everything else stays quiet.
-   Loaded by app.py's load_css(), injected inside a style element.
+   Ported from the Streamlit styles.css — .ts-* / .risk-* classes are unchanged;
+   the page chrome (input, buttons, chat) was retargeted off Streamlit selectors.
    ============================================================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
@@ -19,8 +20,11 @@
   --high:     #A8382F;   /* oxblood    */
 }
 
+* { box-sizing: border-box; }
+
 /* ----- Base ---------------------------------------------------------------- */
-.stApp {
+body {
+  margin: 0;
   background: var(--paper);
   color: var(--ink);
   font-family: 'IBM Plex Sans', system-ui, sans-serif;
@@ -28,14 +32,12 @@
   line-height: 1.6;
 }
 /* One-page measure, centered like a printed tearsheet. */
-.block-container,
-[data-testid="stMainBlockContainer"] {
+.page {
   max-width: 780px;
-  padding-top: 2.4rem;
-  padding-bottom: 4rem;
+  margin: 0 auto;
+  padding: 2.4rem 1.2rem 4rem;
 }
-[data-testid="stHeader"] { background: transparent; }
-#MainMenu, footer { visibility: hidden; }
+.hidden { display: none !important; }
 
 /* Mono utility — apply to any element that should read as machine data. */
 .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; }
@@ -50,10 +52,12 @@
   margin-bottom: 1.4rem;
 }
 
-/* ----- Command-line input (Streamlit text_input) --------------------------- */
-.stTextInput label { color: var(--muted); font-size: 13px; }
-.stTextInput input {
-  font-family: 'IBM Plex Mono', monospace !important;
+/* ----- Command-line input -------------------------------------------------- */
+.ticker-form label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 0.4rem; }
+.ticker-row { display: flex; gap: 0.6rem; }
+#ticker-input {
+  flex: 1;
+  font-family: 'IBM Plex Mono', monospace;
   font-size: 16px;
   letter-spacing: 0.04em;
   color: var(--ink);
@@ -62,13 +66,14 @@
   border-radius: 6px;
   padding: 0.6rem 0.8rem;
 }
-.stTextInput input:focus {
+#ticker-input:focus {
+  outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(39,64,139,0.12);
 }
-
-/* Optional "Analyze" button, if you add one. */
-.stButton > button {
+/* Lighter than the body text so it's clearly a background hint, not a value. */
+#ticker-input::placeholder { color: #B4B7BF; }
+.analyze-btn {
   font-family: 'IBM Plex Mono', monospace;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -78,8 +83,29 @@
   border: none;
   border-radius: 6px;
   padding: 0.55rem 1.1rem;
+  cursor: pointer;
 }
-.stButton > button:hover { background: #1d3070; color: #fff; }
+.analyze-btn:hover { background: #1d3070; }
+
+/* ----- Status / loading ---------------------------------------------------- */
+.status {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 1.2rem;
+}
+.status.error { color: var(--high); }
+.status .spinner {
+  display: inline-block;
+  width: 12px; height: 12px;
+  margin-right: 0.5rem;
+  border: 2px solid rgba(39,64,139,0.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  vertical-align: -1px;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ----- Masthead ------------------------------------------------------------ */
 .ts-rule { border: none; border-top: 1px solid var(--hairline); margin: 1.6rem 0; }
@@ -99,6 +125,35 @@
   color: var(--muted);
   text-transform: uppercase;
 }
+
+/* ----- Collapsible (raw financials) — smooth animated drop-down ------------ */
+.ts-expander { margin: 1.4rem 0 0.4rem; }
+.ts-expander-head {
+  display: flex; align-items: center; gap: 0.55rem;
+  width: 100%; text-align: left;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted);
+  background: none; border: none; cursor: pointer;
+  padding: 0.45rem 0;
+  transition: color 0.18s ease;
+}
+.ts-expander-head:hover { color: var(--ink); }
+.ts-expander-caret {
+  display: inline-block; font-size: 9px; color: var(--muted);
+  transition: transform 0.3s ease, color 0.18s ease;
+}
+.ts-expander-head:hover .ts-expander-caret { color: var(--accent); }
+.ts-expander-head[aria-expanded="true"] .ts-expander-caret { transform: rotate(90deg); }
+/* The 0fr → 1fr grid trick animates height smoothly without a magic number. */
+.ts-expander-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.35s ease;
+}
+.ts-expander-panel.open { grid-template-rows: 1fr; }
+.ts-expander-inner { overflow: hidden; }
+.ts-raw-scroll { overflow-x: auto; padding: 0.3rem 0 0.6rem; }
 
 /* ----- Section label ------------------------------------------------------- */
 .ts-section {
@@ -142,24 +197,20 @@
 .risk-track { position: relative; height: 6px; border-radius: 3px; }
 .risk-zones {
   position: absolute; inset: 0; border-radius: 3px;
-  /* low | moderate | high, very faint inks, hard stops at 35% and 65% */
   background: linear-gradient(90deg,
     rgba(46,125,107,0.18) 0 35%,
     rgba(192,137,47,0.20) 35% 65%,
     rgba(168,56,47,0.20)  65% 100%);
 }
-/* connector from snapshot → adjusted; you set left/width inline in Python */
 .risk-connector {
   position: absolute; top: 50%; height: 2px;
   background: var(--risk); opacity: 0.55; transform: translateY(-50%);
 }
-/* hollow "ghost" = pre-trend snapshot; you set left inline */
 .risk-ghost {
   position: absolute; top: 50%; width: 11px; height: 11px;
   border: 2px solid var(--muted); border-radius: 50%;
   background: var(--surface); transform: translate(-50%, -50%);
 }
-/* filled marker = trend-adjusted score; you set left inline */
 .risk-marker {
   position: absolute; top: 50%; width: 15px; height: 15px;
   background: var(--risk); border: 2px solid var(--surface); border-radius: 50%;
@@ -182,24 +233,26 @@
 }
 .risk-legend b { color: var(--ink); font-weight: 500; }
 
-/* ----- Evidence table ------------------------------------------------------ */
+/* ----- Evidence / data tables ---------------------------------------------- */
 .ts-table { width: 100%; border-collapse: collapse; }
 .ts-table th {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--muted); text-align: left; font-weight: 500;
   padding: 0 0.6rem 0.55rem; border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
 }
 .ts-table td {
   font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
   font-size: 13.5px; color: var(--ink);
   padding: 0.6rem; border-bottom: 1px solid var(--hairline);
+  white-space: nowrap;
 }
 .ts-table td.metric { font-family: 'IBM Plex Sans', sans-serif; color: var(--ink); }
 .ts-table th.num, .ts-table td.num { text-align: right; }
 .ts-table td.up   { color: var(--high); }   /* trend raised risk */
 .ts-table td.down { color: var(--low);  }   /* trend lowered risk */
-.ts-table .flat   { color: var(--muted); }
+.ts-table td.flat { color: var(--muted); }
 .ts-hint { font-size: 11.5px; color: var(--muted); margin-top: 0.5rem; }
 
 /* ----- Analyst note (the plain-English summary) ---------------------------- */
@@ -219,17 +272,84 @@
 }
 
 /* ----- Download button ----------------------------------------------------- */
-.stDownloadButton > button {
+.download-btn {
+  display: inline-block;
+  margin-top: 1.4rem;
   font-family: 'IBM Plex Mono', monospace;
   letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px;
+  text-decoration: none;
   background: var(--surface); color: var(--ink);
   border: 1px solid var(--ink); border-radius: 6px; padding: 0.6rem 1.2rem;
 }
-.stDownloadButton > button:hover { background: var(--ink); color: var(--paper); }
+.download-btn:hover { background: var(--ink); color: var(--paper); }
 
 /* ----- Document chat ------------------------------------------------------- */
-/* Chat MESSAGES are custom-HTML bubbles (st.markdown), not native chat widgets.
-   Differentiated three ways: alignment, fill color, and a mono role label. */
+/* Upload card, modelled on Streamlit's file_uploader: a white panel holding an
+   outline "Upload" button + the size hint. The native <input> is hidden; the
+   <label for="doc-files"> opens the file dialog on click. */
+.doc-files-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+.doc-upload-label { color: var(--muted); font-size: 13px; margin-bottom: 0.55rem; }
+.doc-uploader {
+  display: flex; align-items: center; gap: 1.1rem;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  padding: 0.95rem 1.1rem;
+  margin-bottom: 0.6rem;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.doc-uploader:hover {
+  border-color: #c9cabf;
+  box-shadow: 0 2px 10px rgba(26,34,48,0.06);
+}
+.doc-upload-btn {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 13px; color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  padding: 0.5rem 0.95rem;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+.doc-upload-btn:hover { background: var(--paper); border-color: var(--accent); }
+.doc-upload-btn:active { transform: translateY(1px); }
+.doc-upload-ic { font-size: 13px; color: var(--accent); }
+.doc-upload-hint {
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-size: 13px; color: var(--muted);
+}
+.doc-filelist {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px; color: var(--muted); margin: 0.7rem 0 1rem;
+}
+.doc-filelist .name { color: var(--ink); }
+
+.chat-log { margin: 0.5rem 0 1rem; }
+
+/* Animated "typing" dots shown while the AI answer is loading. */
+.chat-typing { display: inline-flex; gap: 5px; align-items: center; }
+.chat-typing span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--muted);
+  animation: chat-typing 1s infinite ease-in-out;
+}
+.chat-typing span:nth-child(2) { animation-delay: 0.15s; }
+.chat-typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chat-typing {
+  0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+
 .ts-chat {
   display: block;
   max-width: 86%;
@@ -251,7 +371,6 @@
 .ts-chat p + p { margin-top: 0.6rem; }
 .ts-chat strong { font-weight: 600; }
 
-/* Analyst AI — left, white card (the "analyst voice" side) */
 .ts-chat-ai {
   margin-right: auto;
   background: var(--surface);
@@ -260,7 +379,6 @@
 }
 .ts-chat-ai::before { content: "Analyst AI"; }
 
-/* You — right, accent-tinted */
 .ts-chat-user {
   margin-left: auto;
   background: rgba(39,64,139,0.07);
@@ -269,30 +387,35 @@
 }
 .ts-chat-user::before { content: "You"; text-align: right; }
 
-/* Chat input — match the command bar's look and widen it to the page measure.
-   NOTE: these Streamlit-internal selectors are brittle and may shift on upgrade;
-   the .ts-chat bubble markup above is immune. */
-[data-testid="stBottomBlockContainer"] { max-width: 780px; }
-[data-testid="stChatInput"] {
+.chat-form { display: flex; gap: 0.6rem; }
+#chat-input {
+  flex: 1;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+  color: var(--ink);
   background: var(--surface);
   border: 1px solid var(--hairline);
   border-radius: 6px;
+  padding: 0.6rem 0.8rem;
 }
-[data-testid="stChatInput"]:focus-within {
+#chat-input:focus {
+  outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(39,64,139,0.12);
 }
-[data-testid="stChatInput"] textarea {
-  font-family: 'IBM Plex Mono', monospace !important;
-  font-size: 15px;
-  color: var(--ink);
+.chat-send {
+  font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 0.06em; text-transform: uppercase; font-size: 12px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 6px; padding: 0.55rem 1.1rem; cursor: pointer;
 }
+.chat-send:hover { background: #1d3070; }
 
 /* ----- Quality floor ------------------------------------------------------- */
 @media (max-width: 640px) {
   .ts-company { font-size: 27px; }
   .risk-value { font-size: 17px; }
-  .block-container { padding-top: 1.4rem; }
+  .page { padding-top: 1.4rem; }
 }
 *:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
