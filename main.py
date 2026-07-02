@@ -200,16 +200,24 @@ def build_analysis_payload(df, metadata, result, summary_html):
     }
 
 
-def _run_analysis(raw):
+def _run_analysis(raw, allow_recompute=True):
     """Fetch → assess → summarize → render PDF. Cached by normalized ticker.
-    Returns a dict with either {"error": msg} or {"payload":..., "pdf":...}."""
+    Returns a dict with either {"error": msg} or {"payload":..., "pdf":...}.
+
+    allow_recompute=False (used by /api/report) means: serve whatever is in the
+    cache, even if a prior Gemini call failed — never re-fetch just to hand back
+    a PDF that already exists. Re-fetching here risked yfinance rate-limiting a
+    ticker the user is actively looking at, and re-burned Gemini quota."""
     ticker = normalize_ticker(raw)
     if not ticker:
         return {"error": "Enter a ticker symbol."}
     if ticker in _analysis_cache:
         cached = _analysis_cache[ticker]
-        # Expire stale entries so we recompute instead of serving day-old financials.
-        if time.monotonic() - cached["_cached_at"] <= ANALYSIS_TTL_SECONDS:
+        fresh = time.monotonic() - cached["_cached_at"] <= ANALYSIS_TTL_SECONDS
+        # Serve the cache unless it's fresh but the summary failed AND we're
+        # allowed to retry it (i.e. this is a real /api/analyze call, not a
+        # /api/report download of an already-computed result).
+        if fresh and not (cached.get("_summary_pending") and allow_recompute):
             return cached
         del _analysis_cache[ticker]
 
@@ -232,15 +240,19 @@ def _run_analysis(raw):
     except Exception:
         pdf = None
 
-    entry = {"payload": payload, "pdf": pdf}
-    # Only cache successful summaries: caching a transient Gemini failure would
-    # pin "summary unavailable" to this ticker until restart.
-    if summary is not None:
-        entry["_cached_at"] = time.monotonic()
-        _analysis_cache[ticker] = entry
-        # Bound the cache: evict oldest entries (dicts keep insertion order).
-        while len(_analysis_cache) > MAX_ANALYSIS_ENTRIES:
-            _analysis_cache.pop(next(iter(_analysis_cache)))
+    entry = {
+        "payload": payload,
+        "pdf": pdf,
+        "_cached_at": time.monotonic(),
+        # A failed summary is cached too (so a PDF download doesn't re-fetch),
+        # but flagged so a later /api/analyze call is allowed to retry Gemini
+        # instead of pinning "summary unavailable" to this ticker until restart.
+        "_summary_pending": summary is None,
+    }
+    _analysis_cache[ticker] = entry
+    # Bound the cache: evict oldest entries (dicts keep insertion order).
+    while len(_analysis_cache) > MAX_ANALYSIS_ENTRIES:
+        _analysis_cache.pop(next(iter(_analysis_cache)))
     return entry
 
 
@@ -257,7 +269,7 @@ def api_analyze(ticker: str):
 
 @app.get("/api/report")
 def api_report(ticker: str):
-    entry = _run_analysis(ticker)
+    entry = _run_analysis(ticker, allow_recompute=False)
     if "error" in entry:
         return JSONResponse({"error": entry["error"]}, status_code=404)
     if entry["pdf"] is None:

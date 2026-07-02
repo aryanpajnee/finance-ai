@@ -317,6 +317,14 @@ async function uploadFiles(fileList) {
     const response = await fetch("/api/upload", { method: "POST", body: form });
     const data = await response.json();
 
+    // NEW: the backend rejects oversize / too-many uploads with a 400 + {error}.
+    // Without this, a valid PDF gets mislabeled "No readable documents" below.
+    if (!response.ok) {
+      docWarn.classList.remove("hidden");
+      docWarn.textContent = data.error || "Upload failed. Try again.";
+      return;
+    }
+
     if (data.failures && data.failures.length) {
       docWarn.classList.remove("hidden");
       docWarn.textContent =
@@ -387,6 +395,16 @@ chatForm.addEventListener("submit", async (event) => {
     });
     const data = await response.json();
     loading.remove();   // drop the typing bubble before showing the result
+    
+    // NEW: a 400 means the session is gone (evicted or server restarted).
+    // Retrying can't fix that — prompt a re-upload instead of "busy".
+    if (!response.ok) {
+      addBubble("assistant",
+        "<p>Your session expired — please re-upload your documents to continue.</p>");
+      docSession = null;
+      chatForm.classList.add("hidden");
+      return;
+    }
 
     if (data.error === "too_large") {
       addBubble("assistant",
