@@ -11,8 +11,12 @@ The five core modules are untouched. All number formatting lives here in Python 
 the page can never silently diverge from the old Streamlit display logic.
 """
 
+import html
 import math
+import re
+import time
 import uuid
+from pathlib import Path
 
 import pandas as pd
 from fastapi import FastAPI, File, UploadFile
@@ -28,6 +32,18 @@ import markdown
 from docchat import extract_pdfs, within_budget, answer_question, TOKEN_CAP
 
 app = FastAPI(title="AI Financial Risk Analyst")
+
+# Anchor static paths to this file's directory so launch CWD doesn't matter.
+BASE_DIR = Path(__file__).resolve().parent
+
+# Upload limits — reject early with a clear message instead of choking later.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB per file
+MAX_UPLOAD_FILES = 10                # files per request
+MAX_DOC_SESSIONS = 20                # bound _docs_cache (evict oldest beyond this)
+MAX_ANALYSIS_ENTRIES = 32            # bound _analysis_cache (evict oldest beyond this)
+# TTL long enough to avoid re-burning the Gemini free-tier quota within a session,
+# short enough that a server left running doesn't serve day-old financials as fresh.
+ANALYSIS_TTL_SECONDS = 3600          # 1-hour freshness window
 
 # In-memory caches — the hand-written equivalent of Streamlit's @st.cache_data.
 # Keyed by normalized ticker so /api/report can reuse what /api/analyze computed
@@ -56,7 +72,7 @@ def risk_band(score):
 
 
 def indian_format(value):
-    if pd.isna(value):
+    if pd.isna(value) or not math.isfinite(value):
         return "—"
     sign = "-" if value < 0 else ""
     integer, decimal = f"{abs(value):.2f}".split(".")
@@ -191,22 +207,40 @@ def _run_analysis(raw):
     if not ticker:
         return {"error": "Enter a ticker symbol."}
     if ticker in _analysis_cache:
-        return _analysis_cache[ticker]
+        cached = _analysis_cache[ticker]
+        # Expire stale entries so we recompute instead of serving day-old financials.
+        if time.monotonic() - cached["_cached_at"] <= ANALYSIS_TTL_SECONDS:
+            return cached
+        del _analysis_cache[ticker]
 
     df, metadata = fetch_financials(ticker)
     if df is None:
-        return {"error": "No data found. Check ticker symbol."}
+        return {"error": ("No data for this ticker — check the symbol, or Yahoo "
+                          "Finance may be rate-limiting; try again in a minute.")}
 
     result = assess_risk(df)
     summary = generate_risk_summary(metadata, result)
-    summary_html = markdown.markdown(summary) if summary else None
+    # Escape the LLM text BEFORE markdown: python-markdown passes raw HTML through
+    # unsanitized, and this string is injected via innerHTML client-side.
+    summary_html = markdown.markdown(html.escape(summary)) if summary else None
     payload = build_analysis_payload(df, metadata, result, summary_html)
 
     report_summary = summary if summary else "AI summary unavailable at generation time."
-    pdf = generate_pdf(metadata, result, report_summary)
+    # PDF failure must not sink the whole analysis — data/risk/summary still stand.
+    try:
+        pdf = generate_pdf(metadata, result, report_summary)
+    except Exception:
+        pdf = None
 
     entry = {"payload": payload, "pdf": pdf}
-    _analysis_cache[ticker] = entry
+    # Only cache successful summaries: caching a transient Gemini failure would
+    # pin "summary unavailable" to this ticker until restart.
+    if summary is not None:
+        entry["_cached_at"] = time.monotonic()
+        _analysis_cache[ticker] = entry
+        # Bound the cache: evict oldest entries (dicts keep insertion order).
+        while len(_analysis_cache) > MAX_ANALYSIS_ENTRIES:
+            _analysis_cache.pop(next(iter(_analysis_cache)))
     return entry
 
 
@@ -226,7 +260,13 @@ def api_report(ticker: str):
     entry = _run_analysis(ticker)
     if "error" in entry:
         return JSONResponse({"error": entry["error"]}, status_code=404)
-    filename = f"{ticker.strip()}_risk_report.pdf"
+    if entry["pdf"] is None:
+        return JSONResponse(
+            {"error": "PDF generation failed for this ticker — try again later."},
+            status_code=503,
+        )
+    safe_ticker = re.sub(r"[^A-Za-z0-9._-]", "", normalize_ticker(ticker)) or "report"
+    filename = f"{safe_ticker}_risk_report.pdf"
     return Response(
         content=entry["pdf"],
         media_type="application/pdf",
@@ -235,11 +275,29 @@ def api_report(ticker: str):
 
 
 @app.post("/api/upload")
-async def api_upload(files: list[UploadFile] = File(...)):
-    pairs = [(f.filename, await f.read()) for f in files]
+def api_upload(files: list[UploadFile] = File(...)):
+    # Plain def: FastAPI runs it in a threadpool, keeping CPU-bound PyMuPDF
+    # extraction off the event loop.
+    if len(files) > MAX_UPLOAD_FILES:
+        return JSONResponse(
+            {"error": f"Too many files — upload at most {MAX_UPLOAD_FILES} PDFs at a time."},
+            status_code=400,
+        )
+    pairs = []
+    for f in files:
+        data = f.file.read(MAX_UPLOAD_BYTES + 1)
+        if len(data) > MAX_UPLOAD_BYTES:
+            return JSONResponse(
+                {"error": f"'{f.filename}' is over the 25 MB per-file limit."},
+                status_code=400,
+            )
+        pairs.append((f.filename, data))
     docs, failures = extract_pdfs(pairs)
     session_id = uuid.uuid4().hex
     _docs_cache[session_id] = docs
+    # Bound the cache: evict oldest sessions (dicts keep insertion order).
+    while len(_docs_cache) > MAX_DOC_SESSIONS:
+        _docs_cache.pop(next(iter(_docs_cache)))
     return {
         "session_id": session_id,
         "doc_names": [name for name, _ in docs],
@@ -267,14 +325,15 @@ def api_chat(req: ChatRequest):
                             status_code=400)
 
     history = [{"role": t.role, "content": t.content} for t in req.history]
-    ok, est = within_budget(docs, history)
+    ok, est = within_budget(docs, history, req.question)
     if not ok:
         return {"error": "too_large", "est": est, "cap": TOKEN_CAP}
 
     ans = answer_question(docs, history, req.question)
     if ans is None:
         return {"error": "busy"}
-    return {"answer": ans, "answer_html": markdown.markdown(ans)}
+    # Escape before markdown — the result is injected via innerHTML client-side.
+    return {"answer": ans, "answer_html": markdown.markdown(html.escape(ans))}
 
 
 # --------------------------------------------------------------------------- #
@@ -282,7 +341,7 @@ def api_chat(req: ChatRequest):
 # --------------------------------------------------------------------------- #
 @app.get("/")
 def index():
-    return FileResponse("static/index.html")
+    return FileResponse(BASE_DIR / "static" / "index.html")
 
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")

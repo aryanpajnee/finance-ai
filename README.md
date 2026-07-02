@@ -50,9 +50,12 @@ Five ratios, each normalized to a 0–100 sub-score (0 = safe, 100 = risky), the
 | Operating Margin | core profitability | 15% |
 | Revenue Growth | top-line momentum | 10% |
 
-A **trend adjustment** then shifts each sub-score by a bounded amount if the ratio is consistently
-improving or deteriorating across the available years — so a company whose numbers look fine today
-but are sliding gets flagged, and vice versa.
+A **trend adjustment** then shifts each sub-score by a bounded amount based on whether the ratio is
+improving or deteriorating across the available years. The adjustment is deliberately
+**asymmetric**: a deteriorating trend always surfaces as an early warning — even a company whose
+numbers look strong today gets nudged up if its metrics are sliding — while an improving trend only
+lowers risk where there's still risk to remove, so it can never manufacture a falsely reassuring
+score for a company that's already deep in the safe zone.
 
 ### Honesty features (the "never silently wrong" part)
 

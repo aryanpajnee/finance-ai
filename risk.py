@@ -1,12 +1,32 @@
 import math
 import pandas as pd
 
+THRESHOLDS = { #(safe,risky)
+    "current_ratio": (2.0, 1.0),
+    "debt_to_equity": (0.5, 2.0),
+    "interest_coverage": (8.0, 1.5),
+    "operating_margin": (0.20, 0.0),
+    "revenue_growth": (0.15, 0.0)
+}
+DEADBAND = 0.175
+TREND_DELTA = 8
+MIN_TREND_POINTS = 3
+TREND_GATE = 40
+
+WEIGHTS = { #(finding weighted sum)
+    "current_ratio": 0.20,
+    "debt_to_equity": 0.25,
+    "interest_coverage": 0.30,
+    "operating_margin": 0.15,
+    "revenue_growth": 0.10
+}
+
 def current_ratio(latest):
     numerator = latest["Current Assets"]
     denominator = latest["Current Liabilities"]
     if pd.isna(numerator):
         return None
-    if pd.isna(denominator) or abs(denominator)<1:
+    if pd.isna(denominator) or abs(denominator) < 1:
         return None
     else:
         return numerator/denominator
@@ -25,18 +45,21 @@ def _higher_is_better(name):
     safe, risky = THRESHOLDS[name]
     return safe > risky                       # D/E -> False, the rest -> True
 
-def trend_delta(name, series, latest_level):   # series oldest->newest
+def trend_delta(name, series, latest_score):   # series oldest->newest
+    # v1 limitation: trend = endpoints only (first vs last of the None/inf-filtered points)
     pts = [v for v in series if v is not None and not math.isinf(v)]
     if len(pts) < MIN_TREND_POINTS:
         return 0                              # not enough history -> no score change
-    if latest_level is not None and latest_level < TREND_GATE:
-        return 0                              # deep in safe zone -> trend irrelevant, huge buffer
     base = abs(pts[0]) if abs(pts[0]) > 1e-9 else 1.0
     rel = (pts[-1] - pts[0]) / base
     if abs(rel) < DEADBAND:
         return 0                              # move too small -> noise, not a trend
     improving = (rel > 0) == _higher_is_better(name)
-    return -TREND_DELTA if improving else TREND_DELTA
+    delta = -TREND_DELTA if improving else TREND_DELTA
+    if delta < 0 and latest_score is not None and latest_score < TREND_GATE:
+        return 0                              # already deep in safe zone -> improving trend can't lower it;
+                                              # deteriorating trends still pass through (early warning)
+    return delta
 
 def adjust_scores(level_scores, series):
     deltas, adjusted = {}, {}
@@ -54,7 +77,7 @@ def debt_to_equity(latest):
     denominator = latest["Stockholders Equity"]
     if pd.isna(numerator):
         return None
-    if pd.isna(denominator) or abs(denominator)<1:
+    if pd.isna(denominator) or abs(denominator) < 1:
         return None
     if denominator < 0:
         return float('inf')
@@ -64,18 +87,24 @@ def debt_to_equity(latest):
 def interest_coverage(latest):
     numerator = latest["EBIT"]
     denominator = latest["Interest Expense"]
+    debt = latest["Total Debt"]
     if pd.isna(numerator):
-        return None                 
+        return None
+    debt_free = not pd.isna(debt) and abs(debt) < 1
     if pd.isna(denominator) or abs(denominator) < 1:
-        return float('inf')
-    return numerator / denominator
+        # no usable interest figure: only claim debt-free (inf -> safest)
+        # if the balance sheet actually shows ~zero debt
+        return float('inf') if debt_free else None
+    # yfinance sometimes reports Interest Expense as a negative number;
+    # coverage is conventionally EBIT over the *magnitude* of interest
+    return numerator / abs(denominator)
 
 def operating_margin(latest):
     numerator = latest["Operating Income"]
-    denominator =latest["Total Revenue"]
+    denominator = latest["Total Revenue"]
     if pd.isna(numerator):
         return None
-    if pd.isna(denominator) or abs(denominator)<1:
+    if pd.isna(denominator) or abs(denominator) < 1:
         return None
     else:
         return numerator/denominator
@@ -100,18 +129,6 @@ def compute_ratios_for(latest, prior):
 def compute_ratios(df):                      # unchanged behavior: snapshot = latest year
     prior = df.iloc[1] if len(df) > 1 else None
     return compute_ratios_for(df.iloc[0], prior)
-    
-THRESHOLDS = { #(safe,risky)
-    "current_ratio": (2.0,1.0),
-    "debt_to_equity": (0.5 , 2.0),
-    "interest_coverage": (8.0 , 1.5),
-    "operating_margin": (0.20, 0.0),
-    "revenue_growth": (0.15 , 0.0)
-}
-DEADBAND = 0.175      
-TREND_DELTA = 8        
-MIN_TREND_POINTS = 3   
-TREND_GATE = 40
 
 def normalise(safe, risky, value):
     if value is None:
@@ -124,14 +141,6 @@ def score_ratios(ratios):
     for name, value in ratios.items():
         sub_scores[name] = normalise(*THRESHOLDS[name], value=value)
     return sub_scores
-
-WEIGHTS ={#(finding weighted sum)
-         "current_ratio": 0.20,
-        "debt_to_equity":0.25 ,
-        "interest_coverage":0.30,
-        "operating_margin": 0.15,
-        "revenue_growth":0.10 
-    }
 
 def final_score(scores):
     total = 0
@@ -146,6 +155,19 @@ def final_score(scores):
     return total / weight_sum
 
 def assess_risk(df):
+    """Run the full risk assessment on a financials DataFrame (rows = periods, newest first).
+
+    Returns a dict:
+      "ratios"          latest-year ratio values (None where not computable)
+      "scores"          0-100 sub-scores per ratio (None where ratio is None); 0 = safe, 100 = risky
+      "final"           weighted point-in-time score, or None if nothing scorable
+      "periods"         period labels oldest -> newest
+      "series"          per-ratio value lists aligned with "periods"
+      "trend_deltas"    per-ratio trend adjustment (+/-TREND_DELTA or 0)
+      "scores_adjusted" sub-scores after trend adjustment (clamped 0-100)
+      "final_adjusted"  weighted score over the adjusted sub-scores
+      "missing"         count of ratios that came back None (inapplicability signal)
+    """
     ratios = compute_ratios(df)
     scores = score_ratios(ratios)
     final  = final_score(scores)
@@ -160,6 +182,7 @@ def assess_risk(df):
         "trend_deltas": trend_deltas,
         "scores_adjusted": scores_adjusted,
         "final_adjusted": final_adjusted,
+        "missing": sum(1 for v in ratios.values() if v is None),
     }
 
 if __name__ == "__main__":
@@ -174,8 +197,10 @@ if __name__ == "__main__":
         for key, value in metadata.items():
             print(f"{key.replace('_', ' ').title():<14}: {value}")
         print("\n")
-        ratios = compute_ratios(df)
-        for name, value in ratios.items():
+        assessment = assess_risk(df)
+
+        print("Ratios:")
+        for name, value in assessment["ratios"].items():
             label = name.replace('_', ' ').title()
             if value is None:
                 print(f"{label}: N/A")
@@ -184,32 +209,16 @@ if __name__ == "__main__":
             else:
                 print(f"{label}: {value:.2f}")
 
-        scores = score_ratios(ratios)
-        print("\n")
-        print("Risk Scores:")
-        for name, score in scores.items():
-            print(f"{name.replace('_',' ').title()}:{score:.2f}")
-        weighted_sum = final_score(scores)
-        print(f"\nWeighted Sum:{weighted_sum:.2f}")
-        assessment = assess_risk(df)
-
-        print("\nRatios:")
-        for name, value in assessment["ratios"].items():
+        print("\nScores:")
+        for name, value in assessment["scores"].items():
             label = name.replace('_', ' ').title()
             if value is None:
                 print(f"{label}: N/A")
             else:
                 print(f"{label}: {value:.2f}")
 
-        print("\nScores:")
-        for name, value in assessment["scores"].items():
-            label = name.replace('_', ' ').title()
-            print(f"{label}:{value:.2f}")
-
-        print(f"\nFinal Score:{assessment['final']:.2f}")
-                   
-                
-
-        
-        
-        
+        final = assessment["final"]
+        print(f"\nFinal Score: {'N/A' if final is None else f'{final:.2f}'}")
+        final_adjusted = assessment["final_adjusted"]
+        print(f"Final Score (trend-adjusted): {'N/A' if final_adjusted is None else f'{final_adjusted:.2f}'}")
+        print(f"Missing ratios: {assessment['missing']}")

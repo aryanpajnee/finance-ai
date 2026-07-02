@@ -57,11 +57,8 @@ def build_facts(metadata, result):
     return "\n".join(lines)
 
 
-def generate_risk_summary(metadata, result):
-    facts = build_facts(metadata, result)
-
-    SYSTEM_PROMPT = """You are a financial risk analyst explaining an assessment to someone with no finance background.
-    All companies are Indian; use rupees (₹) or avoid currency units entirely — never dollars/cents.
+SYSTEM_PROMPT = """You are a financial risk analyst explaining an assessment to someone with no finance background.
+All companies are Indian; use rupees (₹) or avoid currency units entirely — never dollars/cents.
 
 A separate scoring SYSTEM has already computed everything below from the company's
 financial statements. You do NOT recompute, re-judge, or second-guess the numbers.
@@ -88,6 +85,10 @@ Rules:
 
 Do not give investment advice or tell the user to buy/sell/hold."""
 
+
+def generate_risk_summary(metadata, result):
+    facts = build_facts(metadata, result)
+    # .replace (not .format) is deliberate: .format would crash on braces in company names.
     prompt = SYSTEM_PROMPT.replace("{facts}", facts)
     return get_llm_response(prompt)
 

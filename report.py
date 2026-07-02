@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 
@@ -14,6 +15,7 @@ if sys.platform == "darwin":
             break
         
 from datetime import date
+from html import escape
 
 import markdown
 from weasyprint import HTML
@@ -55,6 +57,28 @@ def build_report_html(metadata, result, summary):
             f"<td class='num'>{adj_display}</td></tr>"
     )
 
+    # Per-year ratios table — same source (result["series"]) and cell rules as the web UI.
+    year_headers = ""
+    for p in result["periods"]:
+        year = p.year if hasattr(p, "year") else str(p)
+        year_headers += f"<th class='num'>{year}</th>"
+
+    year_rows = ""
+    for name in result["series"]:
+        label = name.replace("_", " ").title()
+        cells = ""
+        for v in result["series"][name]:
+            if v is None:
+                cell = "—"
+            elif name in ("operating_margin", "revenue_growth"):
+                cell = f"{v * 100:.1f}%"
+            elif math.isinf(v):
+                cell = "∞"
+            else:
+                cell = f"{v:.2f}"
+            cells += f"<td class='num'>{cell}</td>"
+        year_rows += f"<tr><td>{label}</td>{cells}</tr>"
+
     score = result["final_adjusted"]
     score_text = "N/A" if score is None else f"{score:.1f} / 100"
     band_label, band_color = _score_band(score)
@@ -64,15 +88,18 @@ def build_report_html(metadata, result, summary):
     if score is not None and snapshot is not None and abs(score - snapshot) >= 0.05:
         snapshot_html = f'<div class="snapshot">Point-in-time before trend: {snapshot:.1f} / 100</div>'
 
-    name = metadata["name"] or "N/A"
-    sector = metadata["sector"] or "N/A"
-    market_cap = metadata["market_cap"] or "N/A"
-    currency = metadata["currency"] or "N/A"
+    # yfinance-sourced strings go straight into the HTML template — escape them so
+    # names like "M&M" don't mangle the markup.
+    name = escape(str(metadata["name"] or "N/A"))
+    sector = escape(str(metadata["sector"] or "N/A"))
+    market_cap = escape(str(metadata["market_cap"] or "N/A"))
+    currency = escape(str(metadata["currency"] or "N/A"))
     generated = date.today().strftime("%d %B %Y")
 
     # The LLM writes the summary in Markdown (bold, lists) — render it to real HTML
-    # rather than dumping raw asterisks into the page.
-    summary_html = markdown.markdown(summary)
+    # rather than dumping raw asterisks into the page. Escape it FIRST: python-markdown
+    # passes raw HTML through unsanitized, and WeasyPrint renders it (local-file-read vector).
+    summary_html = markdown.markdown(escape(summary))
 
     return f"""<!DOCTYPE html>
 <html>
@@ -187,14 +214,19 @@ def build_report_html(metadata, result, summary):
         <div class="label">Overall Risk Score &mdash; {band_label}</div>
         <div class="value">{score_text}</div>
         {snapshot_html}
-    <div class="scale">0 = least risky&nbsp;&nbsp;·&nbsp;&nbsp;100 = most risky</div>
-</div>
+        <div class="scale">0 = least risky&nbsp;&nbsp;·&nbsp;&nbsp;100 = most risky</div>
     </div>
 
     <h2>Metric Breakdown</h2>
     <table>
         <tr><th>Metric</th><th class="num">Value</th><th class="num">Risk Score</th><th class="num">Trend</th><th class="num">Adj. Risk</th></tr>
         {rows}
+    </table>
+
+    <h2>Per-year ratios</h2>
+    <table>
+        <tr><th>Metric</th>{year_headers}</tr>
+        {year_rows}
     </table>
 
     <h2>Plain-English Summary</h2>
@@ -210,8 +242,8 @@ def build_report_html(metadata, result, summary):
 </html>"""
 
 
-def generate_pdf(metadata , results , summary):
-    html = build_report_html(metadata , results , summary)
+def generate_pdf(metadata, result, summary):
+    html = build_report_html(metadata, result, summary)
     return HTML(string=html).write_pdf()
 
 if __name__ == "__main__":

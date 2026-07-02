@@ -37,6 +37,13 @@ def format_market_cap(value):
     return f"{value:,.0f}"
 
 def fetch_financials(ticker):
+    """Fetch & clean yfinance financials for a ticker.
+
+    Returns (DataFrame, metadata dict) — rows = periods sorted newest first,
+    columns = statement line items, values in raw currency units — or
+    (None, None) if all 3 fetch attempts fail / no statements exist.
+    """
+    last_error = None
     for attempt in range(3):
         try:
             stock = yf.Ticker(ticker)
@@ -46,10 +53,16 @@ def fetch_financials(ticker):
             info = stock.info
             if not balance.empty and not income.empty:
                 break          # got the data -> stop retrying
-        except Exception:
-            pass               # network hiccup -> fall through to retry
+        except Exception as e:
+            last_error = e     # network hiccup -> fall through to retry
         time.sleep(2)
     else:
+        # all 3 attempts failed -> leave a one-line trace so bad-ticker vs
+        # network/throttle is diagnosable in server logs
+        if last_error is not None:
+            print(f"fetch_financials({ticker!r}): all attempts failed, last error: {last_error!r}")
+        else:
+            print(f"fetch_financials({ticker!r}): no exception, but statements came back empty (bad/delisted ticker?)")
         return None, None      # all 3 attempts failed
 
     balance_extracted = safe_extract(df=balance, items=balance_items)
@@ -60,6 +73,9 @@ def fetch_financials(ticker):
         [balance_extracted, income_extracted, cashflow_extracted], axis=0, sort=False
     )
     combined = combined.dropna(axis=1, how="all")
+    # concat takes the UNION of period columns, appending mismatched periods at
+    # the end out of date order -> enforce newest-first (trend math depends on it)
+    combined = combined[sorted(combined.columns, reverse=True)]
 
     metadata = {
         "name": info.get("longName"),

@@ -23,10 +23,12 @@ const $ = (id) => document.getElementById(id);
 
 const tickerForm = $("ticker-form");
 const tickerInput = $("ticker-input");
+const analyzeBtn = $("analyze-btn");
 const statusEl = $("status");
 const results = $("results");
 
 let currentTicker = "";        // remembered so the chat / PDF know what we analyzed
+let analyzeSeq = 0;            // bumped per analyze request; stale replies are ignored
 
 // --------------------------------------------------------------------------- //
 // 2. Tiny helpers for building DOM nodes safely.
@@ -40,14 +42,18 @@ function el(tag, className, text) {
   return node;
 }
 
-function setStatus(message, isError) {
-  if (!message) { statusEl.classList.add("hidden"); statusEl.innerHTML = ""; return; }
-  statusEl.classList.remove("hidden");
-  statusEl.classList.toggle("error", !!isError);
+// One status line pattern, two places it's used: the top-of-page #status and
+// the #doc-status line under the uploader. Empty message = hide.
+function showStatus(target, message, isError) {
+  if (!message) { target.classList.add("hidden"); target.innerHTML = ""; return; }
+  target.classList.remove("hidden");
+  target.classList.toggle("error", !!isError);
   // a spinner span + the message; spinner only while loading (not on errors)
-  statusEl.innerHTML = isError ? "" : '<span class="spinner"></span>';
-  statusEl.append(document.createTextNode(message));
+  target.innerHTML = isError ? "" : '<span class="spinner"></span>';
+  target.append(document.createTextNode(message));
 }
+
+function setStatus(message, isError) { showStatus(statusEl, message, isError); }
 
 // --------------------------------------------------------------------------- //
 // 3. The form submit handler — the entry point of the whole app.
@@ -60,13 +66,19 @@ tickerForm.addEventListener("submit", async (event) => {
   const raw = tickerInput.value.trim();
   if (!raw) return;
 
+  // Sequence number: if the user submits a second ticker while the first is
+  // still in flight, the older reply is discarded when it lands — a slow
+  // first company can't overwrite a newer one (or mislabel the PDF link).
+  const seq = ++analyzeSeq;
   currentTicker = raw;
+  analyzeBtn.disabled = true;           // no double-submits while pending
   results.classList.add("hidden");
   setStatus("Analyzing… (fetching financials and generating the summary)", false);
 
   try {
     const response = await fetch(`/api/analyze?ticker=${encodeURIComponent(raw)}`);
     const data = await response.json();
+    if (seq !== analyzeSeq) return;     // a newer request superseded this one
 
     if (!response.ok) {                 // backend returned 4xx/5xx with {error: ...}
       setStatus(data.error || "Something went wrong.", true);
@@ -77,7 +89,12 @@ tickerForm.addEventListener("submit", async (event) => {
     render(data);                       // paint the results
     results.classList.remove("hidden");
   } catch (err) {
+    if (seq !== analyzeSeq) return;
     setStatus("Could not reach the server. Is it running?", true);
+  } finally {
+    // Only the latest request may re-enable the button; a superseded one
+    // finishing early must not unlock the form under the newer request.
+    if (seq === analyzeSeq) analyzeBtn.disabled = false;
   }
 });
 
@@ -254,6 +271,7 @@ const docWarn = $("doc-warn");
 const chatLog = $("chat-log");
 const chatForm = $("chat-form");
 const chatInput = $("chat-input");
+const chatSend = $("chat-send");
 
 let docSession = null;          // id the backend gave us for the uploaded docs
 let chatHistory = [];           // [{role:"user"|"assistant", content:"..."}]
@@ -347,6 +365,12 @@ chatForm.addEventListener("submit", async (event) => {
   addBubble("user", escapeHtml(question));
   chatInput.value = "";
 
+  // Lock the input + Send while the request is in flight: a second submit (a
+  // double-click, or Enter) would fire a duplicate Gemini call — wasted free-tier
+  // quota — and a duplicate bubble. Disabling the input also blocks the Enter path.
+  chatSend.disabled = true;
+  chatInput.disabled = true;
+
   // Show an animated "typing" bubble while we wait for the answer.
   const loading = addBubble("assistant",
     '<span class="chat-typing"><span></span><span></span><span></span></span>');
@@ -382,5 +406,10 @@ chatForm.addEventListener("submit", async (event) => {
   } catch (err) {
     loading.remove();
     addBubble("assistant", "<p>Could not reach the server. Try again.</p>");
+  } finally {
+    // Runs on every exit — answer, "too large"/"busy" early returns, or error.
+    chatSend.disabled = false;
+    chatInput.disabled = false;
+    chatInput.focus();
   }
 });

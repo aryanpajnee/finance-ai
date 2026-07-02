@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Financial Risk Analyst</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -15,12 +18,12 @@
       <label for="ticker-input">Enter an Indian stock ticker. (e.g. TCS)</label>
       <div class="ticker-row">
         <input id="ticker-input" type="text" placeholder="Type a ticker and press Enter" spellcheck="false">
-        <button type="submit" class="analyze-btn">Analyze</button>
+        <button id="analyze-btn" type="submit" class="analyze-btn">Analyze</button>
       </div>
     </form>
 
     <!-- Status line: loading spinner / errors live here -->
-    <div id="status" class="status hidden"></div>
+    <div id="status" class="status hidden" role="status" aria-live="polite"></div>
 
     <!-- Everything below is filled in by app.js and revealed after analysis -->
     <section id="results" class="hidden">
@@ -65,15 +68,17 @@
       </div>
 
       <div class="ts-section">Evidence</div>
-      <table class="ts-table">
-        <thead>
-          <tr>
-            <th>Metric</th><th class="num">Value</th><th class="num">Risk</th>
-            <th class="num">Trend</th><th class="num">Adj.</th>
-          </tr>
-        </thead>
-        <tbody id="evidence-body"></tbody>
-      </table>
+      <div class="ts-raw-scroll">
+        <table class="ts-table">
+          <thead>
+            <tr>
+              <th>Metric</th><th class="num">Value</th><th class="num">Risk</th>
+              <th class="num">Trend</th><th class="num">Adj.</th>
+            </tr>
+          </thead>
+          <tbody id="evidence-body"></tbody>
+        </table>
+      </div>
       <p class="ts-hint">▲ trend raised risk · ▼ trend lowered risk</p>
 
       <div class="ts-section">Per-year ratios</div>
@@ -91,15 +96,17 @@
         <span class="doc-upload-btn">
           <span class="doc-upload-ic">↑</span> Upload
         </span>
-        <span class="doc-upload-hint">200MB per file • PDF</span>
+        <span class="doc-upload-hint">PDF · text-based (no scans) · up to 25MB each · max 10 files</span>
+        <input id="doc-files" class="doc-files-hidden" type="file" accept="application/pdf" multiple>
       </label>
-      <input id="doc-files" class="doc-files-hidden" type="file" accept="application/pdf" multiple>
+      <div id="doc-status" class="status hidden" role="status" aria-live="polite"></div>
       <div id="doc-filelist" class="doc-filelist"></div>
       <div id="doc-warn" class="ts-warn hidden"></div>
       <div id="chat-log" class="chat-log"></div>
       <form id="chat-form" class="chat-form hidden">
-        <input id="chat-input" type="text" placeholder="Ask about the uploaded documents" autocomplete="off">
-        <button type="submit" class="chat-send">Send</button>
+        <input id="chat-input" type="text" placeholder="Ask about the uploaded documents"
+               aria-label="Ask about the uploaded documents" autocomplete="off">
+        <button id="chat-send" type="submit" class="chat-send">Send</button>
       </form>
     </section>
   </main>
